@@ -5,21 +5,25 @@ Usage
 -----
     python scanner.py
 
-Signals fire when the EMA-crossover strategy triggers on any Nifty 50 stock.
-Each unique signal (stock + candle timestamp) is sent only once via Telegram.
+Signals fire when any enabled strategy triggers on a Nifty 50 stock.
+Each unique signal (stock + strategy + candle timestamp) is sent only once via Telegram.
 """
 
 import logging
+import subprocess
 import time
-from datetime import datetime, time as dtime
+from datetime import datetime, time as dtime, timedelta
 
 import pytz
 import schedule
 
 import config
 import data_fetcher
-import strategy
+import strategies
 import alerter
+import kite_broker
+import trade_log
+import event_filter
 
 # ── Logging setup ────────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -34,9 +38,15 @@ logging.getLogger("tvDatafeed").setLevel(logging.CRITICAL)
 
 IST = pytz.timezone(config.TIMEZONE)
 
-# Tracks the last candle timestamp for which a signal was sent per ticker.
-# Structure: {ticker: candle_timestamp_str}
-_sent: dict[str, str] = {}
+# Tracks the last candle timestamp for which a signal was sent per (ticker, strategy).
+# Structure: {(ticker, strategy_name): candle_timestamp_str}
+_sent: dict[tuple[str, str], str] = {}
+
+# Tracks the last alert time per (ticker, strategy) for 30-min cooldown.
+# Structure: {(ticker, strategy_name): datetime}
+_last_alert_time: dict[tuple[str, str], datetime] = {}
+
+COOLDOWN_MINUTES = 15
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -55,14 +65,27 @@ def _is_market_open() -> bool:
     return market_open <= now.time() <= market_close
 
 
-def _already_sent(sig: strategy.Signal) -> bool:
-    key = sig.ticker
-    ts  = str(sig.candle_time)
-    return _sent.get(key) == ts
+def _already_sent(sig: strategies.Signal) -> bool:
+    key = (sig.ticker, sig.strategy_name)
+    return _sent.get(key) == str(sig.candle_time)
 
 
-def _mark_sent(sig: strategy.Signal) -> None:
-    _sent[sig.ticker] = str(sig.candle_time)
+def _in_cooldown(sig: strategies.Signal) -> bool:
+    last = _last_alert_time.get((sig.ticker, sig.strategy_name))
+    if last is None:
+        return False
+    return (_now_ist() - last) < timedelta(minutes=COOLDOWN_MINUTES)
+
+
+def _mark_sent(sig: strategies.Signal) -> None:
+    key = (sig.ticker, sig.strategy_name)
+    _sent[key]            = str(sig.candle_time)
+    _last_alert_time[key] = _now_ist()
+
+
+def _already_traded_today(ticker: str) -> bool:
+    """Return True if this ticker already has an entry in today's trade log."""
+    return any(t["ticker"] == ticker for t in trade_log.load_today())
 
 
 # ── Core scan ────────────────────────────────────────────────────────────────
@@ -72,31 +95,67 @@ def run_scan() -> None:
         logger.info("Market closed — skipping scan.")
         return
 
-    logger.info("─── Scanning %d Nifty 50 stocks ───", len(config.NIFTY50_STOCKS))
+    active_strategies = strategies.get_active_strategies()
+    if not active_strategies:
+        logger.warning("No strategies enabled — skipping scan. Use manage_strategies.py to enable one.")
+        return
+
+    strategy_names = ", ".join(s.name for s in active_strategies)
+    logger.info("─── Scanning %d stocks | Strategies: %s ───", len(config.NIFTY50_STOCKS), strategy_names)
+    logger.info("  %-12s | %-4s | %-10s | %s", "STOCK", "SIDE", "PRICE", "Trend | Vol | ATR(%) | ADX | MACD")
     tick = _now_ist().strftime("%H:%M")
 
-    data = data_fetcher.fetch_all(config.NIFTY50_STOCKS)
+    data = data_fetcher.fetch_all(config.NIFTY50_STOCKS, max_workers=4)
     logger.info("Data fetched for %d/%d stocks", len(data), len(config.NIFTY50_STOCKS))
+
+    now_mins = _now_ist().hour * 60 + _now_ist().minute
 
     signals_found = 0
     for ticker, df in data.items():
-        sig = strategy.generate_signal(ticker, df)
-        if sig is None:
-            continue
+        for strat in active_strategies:
+            # Per-strategy session window from params
+            start_str = strat._p("session_start", "09:30")
+            end_str   = strat._p("session_end",   "15:00")
+            sh, sm    = map(int, start_str.split(":"))
+            eh, em    = map(int, end_str.split(":"))
+            if now_mins < sh * 60 + sm:
+                logger.info("  [%s] Before session start (%s) — skipping", strat.name, start_str)
+                continue
+            if now_mins >= eh * 60 + em:
+                logger.info("  [%s] After session end (%s) — skipping", strat.name, end_str)
+                continue
 
-        signals_found += 1
+            sig = strat.generate_signal(ticker, df)
+            if sig is None:
+                continue
 
-        if _already_sent(sig):
-            logger.info("  [skip-dup] %s %s @ %s", sig.direction, sig.ticker, sig.candle_time)
-            continue
+            signals_found += 1
 
-        logger.info(
-            "  [SIGNAL] %s %s | Entry: %.2f | SL: %.2f | Target: %.2f",
-            sig.direction, sig.ticker, sig.entry, sig.stop_loss, sig.target,
-        )
-        sent = alerter.send_alert(sig)
-        if sent:
+            if _already_sent(sig):
+                logger.info("  [skip-dup] %s %s @ %s [%s]",
+                            sig.direction, sig.ticker, sig.candle_time, sig.strategy_name)
+                continue
+
+            if _in_cooldown(sig):
+                logger.info("  [cooldown] %s %s — within 30 min of last alert [%s]",
+                            sig.direction, sig.ticker, sig.strategy_name)
+                continue
+
+            if _already_traded_today(sig.ticker):
+                logger.info("  [daily-limit] %s — already traded today, skipping", sig.ticker)
+                continue
+
+            if event_filter.has_event(sig.ticker):
+                logger.info("  [event-skip] %s — corporate event today, skipping", sig.ticker)
+                continue
+
+            logger.info(
+                "  [SIGNAL] %s %s | Entry: %.2f | SL: %.2f | Target: %.2f | Strategy: %s",
+                sig.direction, sig.ticker, sig.entry, sig.stop_loss, sig.target, sig.strategy_name,
+            )
+            alerter.send_alert(sig)
             _mark_sent(sig)
+            kite_broker.place_orders(sig)
 
     if signals_found == 0:
         logger.info("  No signals this scan (%s IST)", tick)
@@ -105,19 +164,61 @@ def run_scan() -> None:
 
 # ── Entry point ──────────────────────────────────────────────────────────────
 
+def _prevent_sleep() -> None:
+    """Disable Windows sleep and monitor timeout so bot runs uninterrupted."""
+    try:
+        subprocess.run(["powercfg", "/change", "standby-timeout-ac",  "0"], check=True)
+        subprocess.run(["powercfg", "/change", "monitor-timeout-ac",  "0"], check=True)
+        logger.info("System sleep disabled — bot will run without interruption.")
+    except Exception as exc:
+        logger.warning("Could not disable sleep (run as Administrator if needed): %s", exc)
+
+
+def _load_event_filter() -> None:
+    event_filter.load_today()
+
+
+def _reconcile_open_positions() -> None:
+    """On startup, mark any trade-log OPEN positions not found in Kite as KITE_CLOSED."""
+    import kite_session
+    kite = kite_session.get()
+    if kite is None:
+        return
+    try:
+        live = {p["tradingsymbol"] for p in kite.positions().get("net", [])
+                if abs(p["quantity"]) > 0}
+    except Exception:
+        return
+
+    import trade_log as tl
+    from datetime import datetime
+    for t in tl.load_today():
+        if t.get("status") == "OPEN" and t["ticker"] not in live:
+            tl.record_exit(
+                t["entry_order_id"],
+                "KITE_CLOSED",
+                t["fill_price"],
+                0.0,
+            )
+            logger.info("[reconcile] %s not in Kite positions — marked KITE_CLOSED", t["ticker"])
+
+
 def main() -> None:
+    _prevent_sleep()
+    _load_event_filter()
+    _reconcile_open_positions()
+    active = strategies.get_active_strategies()
     logger.info("Trading Alert Scanner started.")
-    logger.info("Stocks  : Nifty 50 (%d tickers)", len(config.NIFTY50_STOCKS))
-    logger.info("Strategy: EMA %d/%d/%d | ATR %d | RR %.1f",
-                config.FAST_EMA, config.SLOW_EMA, config.TREND_EMA,
-                config.ATR_LEN, config.RR_RATIO)
+    logger.info("Stocks    : Nifty 50 (%d tickers)", len(config.NIFTY50_STOCKS))
+    logger.info("Strategies: %d enabled — %s",
+                len(active), ", ".join(s.name for s in active) or "none")
     tg = f"chat_id={config.TELEGRAM_CHAT_ID}" if config.TELEGRAM_CHAT_ID else "(not configured)"
     logger.info("Alerts  : Telegram %s", tg)
     logger.info("Press Ctrl+C to stop.\n")
 
-    # Run immediately on start, then every 5 minutes
+    # Run immediately on start, then every 1 minute
     run_scan()
-    schedule.every(10).minutes.do(run_scan)
+    schedule.every(1).minutes.do(run_scan)
 
     try:
         while True:

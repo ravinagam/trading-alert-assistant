@@ -1,0 +1,66 @@
+//SPRINGPAD
+//@version=6
+indicator(title="SP - Moving Average crossover by Springpad", shorttitle="SP - EMA crossover by Springpad", overlay=true, timeframe="", timeframe_gaps=true)
+
+// === Inputs === //
+len = input.int(9, minval=1, title="Fast EMA Length")
+lenSlow = input.int(21, minval=1, title="Slow EMA Length")
+trendFilter = input.int(50, minval=1, title="Trend Filter Length")
+src = input(close, title="Source")
+offset = input.int(title="Offset", defval=0, minval=-500, maxval=500, display = display.data_window)
+
+// === EMA Calculation === //
+emaFast = ta.ema(src, len)
+emaSlow = ta.ema(src, lenSlow)
+emaTrendFilter = ta.ema(src, trendFilter)
+
+
+// === Plot EMAs === //
+plot(emaFast, title="Fast EMA", color=color.new(color.teal, 0), offset=offset, linewidth=2)
+plot(emaSlow, title="Slow EMA", color=color.new(color.red, 0), offset=offset, linewidth=2)
+plot(emaTrendFilter, title="Trend Filter EMA", color=color.new(color.navy, 0), offset=offset, linewidth=2)
+
+
+// === Buy/Sell Conditions === //
+buySignal = ta.crossover(emaFast, emaSlow)
+sellSignal = ta.crossunder(emaFast, emaSlow)
+
+// === Plot Buy/Sell Arrows === //
+plotshape(buySignal, title="Buy Signal", location=location.belowbar, color=color.new(color.lime, 0), style=shape.triangleup, size=size.small, text="BULLISH", textcolor = color.new(color.lime, 0))
+plotshape(sellSignal, title="Sell Signal", location=location.abovebar, color=color.new(color.red, 0), style=shape.triangledown, size=size.small, text="BEARISH", textcolor = color.new(color.red, 0))
+
+// === Optional Background Highlight === //
+//bgcolor(buySignal ? color.new(color.green, 85) : sellSignal ? color.new(color.red, 85) : na)
+
+// === Alerts === //
+alertcondition(buySignal, title="Buy Alert", message="📈 EMA Crossover: Fast EMA crossed above Slow EMA - BUY Signal")
+alertcondition(sellSignal, title="Sell Alert", message="📉 EMA Crossover: Fast EMA crossed below Slow EMA - SELL Signal")
+
+// === Smoothing MA Inputs (Preserved from Original Code) === //
+GRP = "Smoothing"
+TT_BB = "Only applies when 'SMA + Bollinger Bands' is selected. Determines the distance between the SMA and the bands."
+maTypeInput = input.string("None", "Type", options=["None", "SMA", "SMA + Bollinger Bands", "EMA", "SMMA (RMA)", "WMA", "VWMA"], group=GRP, display=display.data_window)
+maLengthInput = input.int(14, "Length", group=GRP, display=display.data_window)
+bbMultInput = input.float(2.0, "BB StdDev", minval=0.001, maxval=50, step=0.5, tooltip=TT_BB, group=GRP, display=display.data_window)
+
+var enableMA = maTypeInput != "None"
+var isBB = maTypeInput == "SMA + Bollinger Bands"
+
+// === Smoothing MA Calculation === //
+ma(source, length, MAtype) =>
+    switch MAtype
+        "SMA"                   => ta.sma(source, length)
+        "SMA + Bollinger Bands" => ta.sma(source, length)
+        "EMA"                   => ta.ema(source, length)
+        "SMMA (RMA)"            => ta.rma(source, length)
+        "WMA"                   => ta.wma(source, length)
+        "VWMA"                  => ta.vwma(source, length)
+
+// === Smoothing MA and BB Plots === //
+smoothingMA = enableMA ? ma(emaFast, maLengthInput, maTypeInput) : na
+smoothingStDev = isBB ? ta.stdev(emaFast, maLengthInput) * bbMultInput : na
+
+plot(smoothingMA, "EMA-based MA", color=color.yellow, display=enableMA ? display.all : display.none, editable=enableMA)
+bbUpperBand = plot(smoothingMA + smoothingStDev, title="Upper Bollinger Band", color=color.green, display=isBB ? display.all : display.none, editable=isBB)
+bbLowerBand = plot(smoothingMA - smoothingStDev, title="Lower Bollinger Band", color=color.green, display=isBB ? display.all : display.none, editable=isBB)
+fill(bbUpperBand, bbLowerBand, color=isBB ? color.new(color.green, 90) : na, title="Bollinger Bands Background Fill", display=isBB ? display.all : display.none, editable=isBB)

@@ -1,0 +1,175 @@
+// ============================================================
+// RK-EMA Crossover PRO — TradingView Pine Script
+// Matches Python bot filters exactly:
+//   1. EMA 9/21 Crossover
+//   2. EMA 50 Trend Filter
+//   3. Volume > 20-bar SMA  AND  Volume >= 50,000 (absolute min)
+//   4. MACD Confirmation (12,26,9)
+//   5. ATR > 0.2% of price
+//   6. ADX > 20
+//   7. Spike Candle Filter (range > 2.5x ATR blocked)
+//   8. Signals only between 9:30 AM and 3:00 PM IST
+// ============================================================
+//@version=5
+indicator("RK-EMA Crossover PRO", overlay=true, max_labels_count=500, max_lines_count=500)
+
+// ── Inputs ───────────────────────────────────────────────────
+fast_len    = input.int(9,    "Fast EMA",               group="EMA Settings")
+slow_len    = input.int(21,   "Slow EMA",               group="EMA Settings")
+trend_len   = input.int(50,   "Trend EMA",              group="EMA Settings")
+
+atr_len     = input.int(14,   "ATR Period",             group="Filter Settings")
+vol_len     = input.int(20,   "Volume SMA Period",      group="Filter Settings")
+min_atr_pct = input.float(0.2,"Min ATR % of Price",     group="Filter Settings", step=0.1)
+min_adx     = input.int(20,   "Min ADX",                group="Filter Settings")
+min_volume  = input.int(50000,"Min Absolute Volume",    group="Filter Settings")
+spike_mult  = input.float(2.5,"Spike Filter (x ATR)",   group="Filter Settings", step=0.1)
+rr_ratio    = input.float(3.0,"Risk : Reward Ratio",    group="Trade Settings",  step=0.5)
+
+show_emas   = input.bool(true, "Show EMAs",             group="Display")
+show_sl_tgt = input.bool(true, "Show SL/Target Lines",  group="Display")
+show_labels = input.bool(true, "Show Entry Labels",     group="Display")
+
+// ── EMA Calculations ─────────────────────────────────────────
+ema_fast  = ta.ema(close, fast_len)
+ema_slow  = ta.ema(close, slow_len)
+ema_trend = ta.ema(close, trend_len)
+
+// ── Volume Filter ────────────────────────────────────────────
+vol_sma    = ta.sma(volume, vol_len)
+vol_ok     = volume > vol_sma and volume >= min_volume
+
+// ── ATR Filter ───────────────────────────────────────────────
+atr_val  = ta.atr(atr_len)
+atr_pct  = (atr_val / close) * 100
+atr_ok   = atr_pct >= min_atr_pct
+
+// ── ADX Filter ───────────────────────────────────────────────
+[plus_di, minus_di, adx_val] = ta.dmi(atr_len, atr_len)
+adx_ok = adx_val >= min_adx
+
+// ── MACD Filter ──────────────────────────────────────────────
+[macd_line, signal_line, _] = ta.macd(close, 12, 26, 9)
+macd_bull = macd_line > signal_line
+macd_bear = macd_line < signal_line
+
+// ── Spike Candle Filter ──────────────────────────────────────
+candle_range = high - low
+not_spike    = candle_range <= spike_mult * atr_val
+
+// ── Time Filter — 9:30 AM to 3:00 PM IST ────────────────────
+// 9:30 AM start matches Python bot (EMAs need 15 min to settle after open)
+ist_hour   = hour(time, "Asia/Kolkata")
+ist_minute = minute(time, "Asia/Kolkata")
+ist_mins   = ist_hour * 60 + ist_minute
+in_time    = ist_mins >= (9 * 60 + 30) and ist_mins < (15 * 60)
+
+// ── EMA Crossover ────────────────────────────────────────────
+cross_up   = ta.crossover(ema_fast,  ema_slow)
+cross_down = ta.crossunder(ema_fast, ema_slow)
+
+// ── Final Signal Conditions ───────────────────────────────────
+buy_signal  = cross_up   and
+              close > ema_trend and
+              vol_ok             and
+              macd_bull          and
+              atr_ok             and
+              adx_ok             and
+              not_spike          and
+              in_time
+
+sell_signal = cross_down and
+              close < ema_trend and
+              vol_ok             and
+              macd_bear          and
+              atr_ok             and
+              adx_ok             and
+              not_spike          and
+              in_time
+
+// ── SL and Target ────────────────────────────────────────────
+buy_sl     = close - atr_val
+buy_target = close + atr_val * rr_ratio
+sell_sl    = close + atr_val
+sell_target= close - atr_val * rr_ratio
+
+// ── Plot EMAs ────────────────────────────────────────────────
+plot(show_emas ? ema_fast  : na, "EMA 9",  color=color.new(color.green, 0), linewidth=1)
+plot(show_emas ? ema_slow  : na, "EMA 21", color=color.new(color.red,   0), linewidth=1)
+plot(show_emas ? ema_trend : na, "EMA 50", color=color.new(color.blue,  0), linewidth=2)
+
+// ── BUY Signal Marker ────────────────────────────────────────
+plotshape(buy_signal,
+          title     = "BUY Signal",
+          location  = location.belowbar,
+          color     = color.new(color.green, 0),
+          style     = shape.labelup,
+          text      = "BUY",
+          textcolor = color.white,
+          size      = size.normal)
+
+// ── SELL Signal Marker ───────────────────────────────────────
+plotshape(sell_signal,
+          title     = "SELL Signal",
+          location  = location.abovebar,
+          color     = color.new(color.red, 0),
+          style     = shape.labeldown,
+          text      = "SELL",
+          textcolor = color.white,
+          size      = size.normal)
+
+// ── Entry Labels with SL and Target ──────────────────────────
+if buy_signal and show_labels
+    label.new(
+          bar_index, low - atr_val * 0.5,
+          "BUY\nEntry : " + str.tostring(close,      "#.00") +
+          "\nSL    : "    + str.tostring(buy_sl,      "#.00") +
+          "\nTarget: "    + str.tostring(buy_target,  "#.00") +
+          "\nATR   : "    + str.tostring(atr_val,     "#.00") +
+          "\nADX   : "    + str.tostring(adx_val,     "#.0"),
+          color     = color.new(color.green, 10),
+          textcolor = color.white,
+          style     = label.style_label_up,
+          size      = size.normal)
+
+if sell_signal and show_labels
+    label.new(
+          bar_index, high + atr_val * 0.5,
+          "SELL\nEntry : " + str.tostring(close,       "#.00") +
+          "\nSL    : "     + str.tostring(sell_sl,      "#.00") +
+          "\nTarget: "     + str.tostring(sell_target,  "#.00") +
+          "\nATR   : "     + str.tostring(atr_val,      "#.00") +
+          "\nADX   : "     + str.tostring(adx_val,      "#.0"),
+          color     = color.new(color.red, 10),
+          textcolor = color.white,
+          style     = label.style_label_down,
+          size      = size.normal)
+
+// ── SL and Target Dashed Lines ───────────────────────────────
+if buy_signal and show_sl_tgt
+    line.new(bar_index, buy_sl,
+             bar_index + 25, buy_sl,
+             color=color.new(color.red,   20),
+             width=1, style=line.style_dashed)
+    line.new(bar_index, buy_target,
+             bar_index + 25, buy_target,
+             color=color.new(color.green, 20),
+             width=1, style=line.style_dashed)
+
+if sell_signal and show_sl_tgt
+    line.new(bar_index, sell_sl,
+             bar_index + 25, sell_sl,
+             color=color.new(color.red,   20),
+             width=1, style=line.style_dashed)
+    line.new(bar_index, sell_target,
+             bar_index + 25, sell_target,
+             color=color.new(color.green, 20),
+             width=1, style=line.style_dashed)
+
+// ── Background Color on Signal ───────────────────────────────
+bgcolor(buy_signal  ? color.new(color.green, 88) : na, title="BUY Background")
+bgcolor(sell_signal ? color.new(color.red,   88) : na, title="SELL Background")
+
+// ── Alert Conditions ─────────────────────────────────────────
+alertcondition(buy_signal,  "BUY Signal",  "RK-EMA PRO: BUY {{ticker}} @ {{close}}")
+alertcondition(sell_signal, "SELL Signal", "RK-EMA PRO: SELL {{ticker}} @ {{close}}")

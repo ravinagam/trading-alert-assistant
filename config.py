@@ -3,46 +3,68 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# --- Nifty 100 symbols (plain NSE symbol — same as TradingView) ---
-# Note: M&M is listed as 'MM' on TradingView/NSE
+# --- Watchlist: Nifty 50 core + backtest-validated additions (NSE tickers, as of May 2026) ---
+# Removed: BAJAJ-AUTO, HINDALCO, KOTAKBANK, TATASTEEL (failed both strategy backtests)
+# Added: BHEL, NHPC, SIEMENS, ZYDUSLIFE (both pass) + 13 single-strategy-pass stocks
 NIFTY50_STOCKS = [
-    # Nifty 50
-    "ADANIENT", "ADANIPORTS", "APOLLOHOSP", "ASIANPAINT",
-    "AXISBANK", "BAJAJ-AUTO", "BAJFINANCE", "BAJAJFINSV",
-    "BPCL", "BHARTIARTL", "BRITANNIA", "CIPLA",
-    "COALINDIA", "DIVISLAB", "DRREDDY", "EICHERMOT",
-    "GRASIM", "HCLTECH", "HDFCBANK", "HDFCLIFE",
-    "HEROMOTOCO", "HINDALCO", "HINDUNILVR", "ICICIBANK",
-    "ITC", "INDUSINDBK", "INFY", "JSWSTEEL",
-    "KOTAKBANK", "LT", "LTIM", "MM",
-    "MARUTI", "NTPC", "NESTLEIND", "ONGC",
-    "POWERGRID", "RELIANCE", "SBILIFE", "SBIN",
-    "SUNPHARMA", "TCS", "TATACONSUM", "TATAMOTORS",
-    "TATASTEEL", "TECHM", "TITAN", "ULTRACEMCO",
-    "UPL", "WIPRO",
-    # Nifty 100 (additional 50)
-    "ABB", "ADANIGREEN", "ADANIPOWER", "AMBUJACEM",
-    "BAJAJHFL", "BANKBARODA", "BEL", "BHEL",
-    "BOSCHLTD", "CANBK", "CHOLAFIN", "CUMMINSIND",
-    "DLF", "GAIL", "GODREJCP", "HAVELLS",
-    "ICICIGI", "ICICIPRULI", "INDUSTOWER", "IOC",
-    "IRCTC", "JINDALSTEL", "LICI", "MARICO",
-    "MAXHEALTH", "MUTHOOTFIN", "NHPC", "NMDC",
-    "OBEROIRLTY", "OFSS", "PAGEIND", "PERSISTENT",
-    "PETRONET", "PFC", "PIDILITIND", "PNB",
-    "RECLTD", "SAIL", "SHRIRAMFIN", "SIEMENS",
-    "SRF", "TATAPOWER", "TORNTPHARM", "TRENT",
-    "VEDL", "ZOMATO", "ZYDUSLIFE", "MCDOWELL-N",
+    # Nifty 50 core
+    "ADANIENT", "ADANIPORTS", "ASIANPAINT", "AXISBANK",
+    "BAJAJFINSV", "BAJFINANCE", "BEL", "BPCL",
+    "DRREDDY", "EICHERMOT", "ETERNAL", "GRASIM",
+    "HCLTECH", "HDFCBANK", "HDFCLIFE", "HEROMOTOCO",
+    "HINDUNILVR", "ICICIBANK", "INDUSINDBK", "INFY",
+    "ITC", "LT", "M&M", "MARUTI",
+    "NTPC", "ONGC", "POWERGRID", "SBIN",
+    "SHRIRAMFIN", "TATACONSUM", "TMCV", "TMPV",
+    "TECHM", "TRENT", "ULTRACEMCO", "WIPRO",
+    # Backtest-validated additions (both strategies pass)
+    "BHEL", "NHPC", "SIEMENS", "ZYDUSLIFE",
+    # Backtest-validated additions (one strategy pass)
+    "BRITANNIA", "CANBK", "DIVISLAB", "DMART",
+    "HAL", "IOC", "MOTHERSON", "NESTLEIND",
+    "PERSISTENT", "PFC", "RECLTD", "SAIL", "SUNPHARMA",
 ]
 NSE_EXCHANGE = "NSE"
+
+# --- High ATR stocks — priority flag in Telegram alert ---
+HIGH_ATR_STOCKS = {
+    # Banking & Finance
+    "AXISBANK", "INDUSINDBK", "ICICIBANK", "HDFCBANK",
+    "BAJFINANCE", "BAJAJFINSV", "SHRIRAMFIN",
+    # IT
+    "INFY", "TECHM", "HCLTECH", "WIPRO", "PERSISTENT",
+    # Auto & Capital Goods
+    "TMCV", "TMPV", "M&M", "EICHERMOT", "MOTHERSON",
+    # Pharma
+    "SUNPHARMA", "DIVISLAB", "ZYDUSLIFE",
+    # Capital Goods & Infra
+    "SIEMENS", "LT", "HAL",
+    # Energy & Metals
+    "ADANIENT", "ADANIPORTS",
+}
 
 # --- Strategy parameters (mirror your Pine Script) ---
 FAST_EMA    = 9
 SLOW_EMA    = 21
 TREND_EMA   = 50
 ATR_LEN     = 14
-RR_RATIO    = 2.0
+RR_RATIO    = 3.0
 VOLUME_SMA  = 20
+
+# --- Data source toggle ---
+# "kite" → Zerodha Kite Historical API (requires kite_auth.py each morning)
+# "tv"   → TradingView via tvDatafeed (no extra auth, anonymous)
+DATA_SOURCE = os.getenv("DATA_SOURCE", "kite")
+
+# --- Zerodha Kite Connect (data + auto order placement) ---
+# Subscribe at developers.kite.trade (~Rs 2000/month)
+# Set KITE_ENABLED=true in .env only after running: python kite_auth.py
+KITE_ENABLED    = os.getenv("KITE_ENABLED",    "false").lower() == "true"
+KITE_API_KEY    = os.getenv("KITE_API_KEY",    "")
+KITE_API_SECRET = os.getenv("KITE_API_SECRET", "")
+
+# Fixed order quantity (set to 0 to use capital-based sizing instead)
+KITE_FIXED_QTY  = int(os.getenv("KITE_FIXED_QTY", "1"))
 
 # --- TradingView login (optional but gives more data / no rate limits) ---
 # Leave blank for anonymous access (slightly limited but works for Nifty 50)
@@ -55,6 +77,11 @@ TV_PASSWORD = os.getenv("TV_PASSWORD", "")
 #   https://api.telegram.org/bot<TOKEN>/getUpdates
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID   = os.getenv("TELEGRAM_CHAT_ID", "")
+
+# --- Position sizing (fixed capital per trade for 1-week testing) ---
+TOTAL_CAPITAL        = 1_000_000   # ₹10 Lakhs total
+PRIORITY_CAPITAL     = 100_000     # ₹1.0L per HIGH PRIORITY trade
+NORMAL_CAPITAL       = 50_000      # ₹0.5L per normal trade
 
 # --- Market timing (IST) ---
 MARKET_OPEN_H,  MARKET_OPEN_M  = 9,  15

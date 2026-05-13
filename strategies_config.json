@@ -1,0 +1,84 @@
+{
+  "strategies": {
+    "ema_crossover_pro": {
+      "enabled": false,
+      "description": "RK EMA Crossover PRO (9/21/50 EMA with volume, ATR, ADX, MACD filters)",
+      "params": {
+        "fast_ema": 9,
+        "slow_ema": 21,
+        "trend_ema": 50,
+        "atr_len": 14,
+        "rr_ratio": 3.0,
+        "volume_sma": 20,
+        "min_atr_pct": 0.2,
+        "min_adx": 20,
+        "min_volume": 50000,
+        "spike_atr_mult": 2.5,
+        "session_start": "09:30",
+        "session_end": "15:00"
+      }
+    },
+    "sp_ema_crossover": {
+      "enabled": false,
+      "description": "SP EMA Crossover by Springpad (9/21 crossover, no extra filters)",
+      "params": {
+        "fast_ema": 9,
+        "slow_ema": 21,
+        "trend_ema": 50,
+        "atr_len": 14,
+        "rr_ratio": 3.0,
+        "session_start": "09:15",
+        "session_end": "15:15"
+      }
+    },
+    "orb": {
+      "enabled": true,
+      "description": "Opening Range Breakout — breakout above/below first-N-min high/low with volume filter",
+      "params": {
+        "orb_minutes": 15,
+        "atr_len": 14,
+        "rr_ratio": 3.0,
+        "sl_mult": 1.0,
+        "min_volume": 50000,
+        "volume_sma": 20,
+        "ema_confirm": true,
+        "ema_fast": 9,
+        "ema_slow_sma": 20,
+        "session_start": "09:30",
+        "session_end": "11:30"
+      }
+    },
+    "vwap": {
+      "enabled": true,
+      "description": "VWAP Crossover — EMA(9) crosses VWAP with optional EMA(50) trend filter",
+      "params": {
+        "fast_ema": 9,
+        "trend_ema": 50,
+        "atr_len": 14,
+        "rr_ratio": 3.0,
+        "sl_mult": 1.0,
+        "trend_filter": true,
+        "ema_confirm": true,
+        "ema_slow_sma": 20,
+        "session_start": "11:30",
+        "session_end": "14:45"
+      }
+    },
+    "ema9_sma20": {
+      "enabled": false,
+      "description": "EMA(9) x SMA(20) crossover · volume + ADX filters · price confirmation",
+      "params": {
+        "fast_ema": 9,
+        "slow_sma": 20,
+        "atr_len": 14,
+        "rr_ratio": 3.0,
+        "sl_mult": 1.0,
+        "volume_sma": 20,
+        "min_volume": 50000,
+        "min_adx": 20,
+        "session_start": "09:30",
+        "session_end": "15:15"
+      }
+    }
+  }
+}
