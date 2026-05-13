@@ -8,3 +8,6 @@ __pycache__/
 
 # IDE
 .vscode/
+
+# Local notes
+TAA_Notes.txt
