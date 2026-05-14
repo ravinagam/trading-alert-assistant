@@ -47,6 +47,9 @@ class ORBStrategy(BaseStrategy):
         return self.params.get(key, self._DEFAULTS.get(key, default))
 
     def generate_signal(self, ticker: str, df: pd.DataFrame) -> Optional[Signal]:
+        if ticker in self._p("excluded_tickers", []):
+            return None
+
         orb_minutes  = self._p("orb_minutes")
         atr_len      = self._p("atr_len")
         rr_ratio     = self._p("rr_ratio")

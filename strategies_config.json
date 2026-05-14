@@ -45,7 +45,8 @@
         "ema_fast": 9,
         "ema_slow_sma": 20,
         "session_start": "09:30",
-        "session_end": "11:30"
+        "session_end": "10:00",
+        "excluded_tickers": ["M&M"]
       }
     },
     "vwap": {
