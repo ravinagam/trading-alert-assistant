@@ -13,6 +13,7 @@ from strategies.sp_ema_crossover import SPEMACrossoverStrategy
 from strategies.orb import ORBStrategy
 from strategies.vwap import VWAPStrategy
 from strategies.ema9_sma20 import EMA9SMA20Strategy
+from strategies.supertrend import SupertrendStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +26,7 @@ _STRATEGY_CLASSES: dict[str, type] = {
     "orb":               ORBStrategy,
     "vwap":              VWAPStrategy,
     "ema9_sma20":        EMA9SMA20Strategy,
+    "supertrend":        SupertrendStrategy,
 }
 
 

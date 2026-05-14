@@ -65,6 +65,22 @@
         "session_end": "14:45"
       }
     },
+    "supertrend": {
+      "enabled": true,
+      "description": "Supertrend — ATR(10,3) dynamic trend flip with volume + EMA9>SMA20 confirmation",
+      "params": {
+        "atr_len": 10,
+        "multiplier": 3.0,
+        "rr_ratio": 3.0,
+        "min_volume": 50000,
+        "volume_sma": 20,
+        "ema_confirm": true,
+        "ema_fast": 9,
+        "ema_slow_sma": 20,
+        "session_start": "10:00",
+        "session_end": "11:30"
+      }
+    },
     "ema9_sma20": {
       "enabled": false,
       "description": "EMA(9) x SMA(20) crossover · volume + ADX filters · price confirmation",
