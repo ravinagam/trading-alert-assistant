@@ -187,6 +187,68 @@ def _monitor_position(
             logger.warning("[monitor] Error checking %s: %s", ticker, exc)
 
 
+# ── Forced square-off (3:10 PM) ───────────────────────────────────────────────
+
+def square_off_all_open() -> None:
+    """
+    Exit every OPEN position at market before Zerodha's 3:20 PM auto square-off.
+    Cancels pending SL/target orders first, then places a MARKET MIS exit.
+    Records each exit as BOT_SQUAREDOFF in the trade log.
+    """
+    if not getattr(config, "KITE_ENABLED", False):
+        return
+
+    kite = _get_kite()
+    if kite is None:
+        logger.warning("[squareoff] No Kite session — cannot square off open positions.")
+        _send_urgent_alert("3:10 PM square-off FAILED — no Kite session. Close open positions manually before 3:20 PM!")
+        return
+
+    open_trades = [t for t in trade_log.load_today() if t.get("status") == "OPEN"]
+    if not open_trades:
+        logger.info("[squareoff] No open positions at 3:10 PM — nothing to do.")
+        return
+
+    logger.info("[squareoff] Squaring off %d open position(s) to avoid auto square-off charges.",
+                len(open_trades))
+
+    for trade in open_trades:
+        ticker    = trade["ticker"]
+        direction = trade["direction"]
+        qty       = trade["qty"]
+        is_buy    = direction == "BUY"
+        exit_side = kite.TRANSACTION_TYPE_SELL if is_buy else kite.TRANSACTION_TYPE_BUY
+
+        # Cancel pending SL and target before exiting
+        _cancel_open_orders(kite, ticker)
+
+        try:
+            order_id = kite.place_order(
+                variety          = kite.VARIETY_REGULAR,
+                exchange         = kite.EXCHANGE_NSE,
+                tradingsymbol    = ticker,
+                transaction_type = exit_side,
+                quantity         = qty,
+                product          = kite.PRODUCT_MIS,
+                order_type       = kite.ORDER_TYPE_MARKET,
+                tag              = "BOT-SQUAREOFF",
+            )
+            logger.info("[squareoff] Market exit placed  %s  order_id=%s", ticker, order_id)
+
+            exit_price = _wait_for_fill(kite, order_id, timeout=20) or trade["fill_price"]
+            pnl        = (exit_price - trade["fill_price"]) * qty * (1 if is_buy else -1)
+
+            trade_log.record_exit(trade["entry_order_id"], "BOT_SQUAREDOFF", exit_price, round(pnl, 2))
+            logger.info("[squareoff] %s  exit=%.2f  P&L=%.2f", ticker, exit_price, pnl)
+
+        except Exception as exc:
+            logger.error("[squareoff] FAILED to exit %s: %s", ticker, exc)
+            _send_urgent_alert(
+                f"SQUAREOFF FAILED for {ticker} ({direction} {qty})\n"
+                f"Close manually before 3:20 PM!\nError: {exc}"
+            )
+
+
 # ── Main order placement ──────────────────────────────────────────────────────
 
 def place_orders(signal: Signal) -> bool:

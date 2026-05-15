@@ -174,6 +174,13 @@ def _prevent_sleep() -> None:
         logger.warning("Could not disable sleep (run as Administrator if needed): %s", exc)
 
 
+def _square_off_all() -> None:
+    """Triggered at 15:10 — exit all open positions before Zerodha's 3:20 auto square-off."""
+    logger.info("─── 3:10 PM square-off triggered ───")
+    kite_broker.square_off_all_open()
+    logger.info("─── Square-off complete ───")
+
+
 def _load_event_filter() -> None:
     event_filter.load_today()
 
@@ -219,6 +226,7 @@ def main() -> None:
     # Run immediately on start, then every 1 minute
     run_scan()
     schedule.every(1).minutes.do(run_scan)
+    schedule.every().day.at("15:10").do(_square_off_all)
 
     try:
         while True:

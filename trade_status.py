@@ -41,10 +41,11 @@ def _color_pnl(pnl: float) -> str:
 
 
 def _status_label(status: str) -> str:
-    if status == "TARGET_HIT":  return f"{GREEN}TARGET HIT {RESET}"
-    if status == "SL_HIT":      return f"{RED}SL HIT     {RESET}"
-    if status == "KITE_CLOSED": return f"{YELLOW}KITE CLOSED{RESET}"
-    if status == "OPEN":        return f"{CYAN}OPEN       {RESET}"
+    if status == "TARGET_HIT":    return f"{GREEN}TARGET HIT {RESET}"
+    if status == "SL_HIT":        return f"{RED}SL HIT     {RESET}"
+    if status == "KITE_CLOSED":   return f"{YELLOW}KITE CLOSED{RESET}"
+    if status == "BOT_SQUAREDOFF":return f"{YELLOW}BOT SQROFF {RESET}"
+    if status == "OPEN":          return f"{CYAN}OPEN       {RESET}"
     return f"{status:<11}"
 
 
@@ -177,9 +178,9 @@ def _print_strategy_performance(all_trades: list[dict], days: int) -> None:
         s      = stats[strat]
         s["trades"] += 1
         s["pnl"]    += pnl
-        if status == "TARGET_HIT":  s["target"] += 1
-        elif status == "SL_HIT":    s["sl"]     += 1
-        else:                       s["kite"]   += 1
+        if status == "TARGET_HIT":                      s["target"] += 1
+        elif status == "SL_HIT":                        s["sl"]     += 1
+        elif status in ("KITE_CLOSED", "BOT_SQUAREDOFF"): s["kite"] += 1
 
     period = "today" if days == 1 else f"last {days} days"
     print(f"\n  {BOLD}STRATEGY PERFORMANCE  ({period}){RESET}\n")
@@ -292,7 +293,7 @@ def main() -> None:
     total_trades  = len(all_trades)
     target_count  = sum(1 for t in closed_trades if t.get("status") == "TARGET_HIT")
     sl_count      = sum(1 for t in closed_trades if t.get("status") == "SL_HIT")
-    kite_count    = sum(1 for t in closed_trades if t.get("status") == "KITE_CLOSED")
+    kite_count    = sum(1 for t in closed_trades if t.get("status") in ("KITE_CLOSED", "BOT_SQUAREDOFF"))
     closed_n      = len(closed_trades)
     win_pct       = round(target_count / closed_n * 100, 1) if closed_n else 0.0
     total_pnl     = realized_pnl + unreal_pnl
