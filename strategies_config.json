@@ -61,6 +61,7 @@
         "trend_filter": true,
         "ema_confirm": true,
         "ema_slow_sma": 20,
+        "min_adx": 20,
         "session_start": "11:30",
         "session_end": "14:45"
       }
@@ -77,6 +78,7 @@
         "ema_confirm": true,
         "ema_fast": 9,
         "ema_slow_sma": 20,
+        "max_sl_pct": 1.5,
         "session_start": "10:00",
         "session_end": "11:30"
       }

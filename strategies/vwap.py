@@ -15,7 +15,7 @@ import pytz
 
 import config
 from strategies.base import BaseStrategy, Signal
-from strategies.ema_crossover import _ema, _atr, _crossover, _crossunder
+from strategies.ema_crossover import _ema, _atr, _adx, _crossover, _crossunder
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +63,7 @@ class VWAPStrategy(BaseStrategy):
         "trend_filter": True,   # price must be above EMA50 for BUY, below for SELL
         "ema_confirm":  True,   # require EMA(9) > SMA(20) for BUY, < for SELL
         "ema_slow_sma": 20,
+        "min_adx":      20,     # skip signal when market is ranging (ADX < threshold)
     }
 
     def _p(self, key: str, default=None):
@@ -77,6 +78,7 @@ class VWAPStrategy(BaseStrategy):
         trend_filter = self._p("trend_filter")
         ema_confirm  = self._p("ema_confirm")
         ema_slow_sma = self._p("ema_slow_sma")
+        min_adx      = self._p("min_adx")
 
         min_candles = trend_ema + atr_len + 5
         if len(df) < min_candles:
@@ -88,6 +90,7 @@ class VWAPStrategy(BaseStrategy):
         ema_fast_s  = _ema(close, fast_ema)
         ema_trend_s = _ema(close, trend_ema)
         atr_series  = _atr(df, atr_len)
+        adx_series  = _adx(df, atr_len)
         vwap_series = _compute_vwap(df)
 
         i = -2  # last completed candle
@@ -102,6 +105,13 @@ class VWAPStrategy(BaseStrategy):
         cross_down = _crossunder(ema_fast_s, vwap_series, i)
 
         if not cross_up and not cross_down:
+            return None
+
+        # ADX filter — skip in ranging/choppy market
+        adx_val = float(adx_series.iloc[i])
+        if adx_val < min_adx:
+            logger.debug("%s: VWAP filtered — ADX %.1f below min %d (ranging market)",
+                         ticker, adx_val, min_adx)
             return None
 
         # Trend filter gate

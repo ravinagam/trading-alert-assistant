@@ -80,6 +80,7 @@ class SupertrendStrategy(BaseStrategy):
         "ema_confirm":  True,
         "ema_fast":     9,
         "ema_slow_sma": 20,
+        "max_sl_pct":   1.5,    # skip if ST line is > 1.5% from entry (high-ATR stocks)
     }
 
     def _p(self, key: str, default=None):
@@ -94,6 +95,7 @@ class SupertrendStrategy(BaseStrategy):
         ema_confirm  = self._p("ema_confirm")
         ema_fast     = self._p("ema_fast")
         ema_slow_sma = self._p("ema_slow_sma")
+        max_sl_pct   = self._p("max_sl_pct")
 
         min_candles = atr_len + volume_sma + 10
         if len(df) < min_candles:
@@ -138,6 +140,12 @@ class SupertrendStrategy(BaseStrategy):
         sl_dist = abs(entry - sl_price)
         if sl_dist < 0.01:
             logger.debug("%s: ST %s filtered — SL distance negligible", ticker, direction)
+            return None
+
+        sl_pct = sl_dist / entry * 100
+        if sl_pct > max_sl_pct:
+            logger.debug("%s: ST %s filtered — SL %.1f%% exceeds max %.1f%% (ST line too far)",
+                         ticker, direction, sl_pct, max_sl_pct)
             return None
 
         if direction == "BUY":
