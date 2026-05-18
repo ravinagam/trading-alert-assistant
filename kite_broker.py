@@ -171,8 +171,15 @@ def _monitor_position(
                 status     = "SL_HIT"
                 exit_price = sl_fill
             else:
-                status     = "KITE_CLOSED"
-                exit_price = _last_exit_price_from_trades(kite, ticker) or fill_price
+                status = "KITE_CLOSED"
+                # Derive exit price from position's sell/buy price (works for manual closes)
+                pos_exit = None
+                if pos is not None:
+                    if is_buy and float(pos.get("sell_price") or 0) > 0:
+                        pos_exit = float(pos["sell_price"])
+                    elif not is_buy and float(pos.get("buy_price") or 0) > 0:
+                        pos_exit = float(pos["buy_price"])
+                exit_price = pos_exit or _last_exit_price_from_trades(kite, ticker) or fill_price
 
             pnl = (exit_price - fill_price) * qty * (1 if is_buy else -1)
 
