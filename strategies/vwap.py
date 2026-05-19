@@ -64,6 +64,7 @@ class VWAPStrategy(BaseStrategy):
         "ema_confirm":  True,   # require EMA(9) > SMA(20) for BUY, < for SELL
         "ema_slow_sma": 20,
         "min_adx":      20,     # skip signal when market is ranging (ADX < threshold)
+        "max_sl_rupees": 10,    # skip if ATR-based SL distance > ₹10 (prevents outsized losses on high-price stocks)
     }
 
     def _p(self, key: str, default=None):
@@ -78,7 +79,8 @@ class VWAPStrategy(BaseStrategy):
         trend_filter = self._p("trend_filter")
         ema_confirm  = self._p("ema_confirm")
         ema_slow_sma = self._p("ema_slow_sma")
-        min_adx      = self._p("min_adx")
+        min_adx       = self._p("min_adx")
+        max_sl_rupees = self._p("max_sl_rupees")
 
         min_candles = trend_ema + atr_len + 5
         if len(df) < min_candles:
@@ -100,6 +102,11 @@ class VWAPStrategy(BaseStrategy):
         ema_t    = float(ema_trend_s.iloc[i])
         vwap_val = float(vwap_series.iloc[i])
         candle_t = df.index[i]
+
+        if max_sl_rupees and atr_val > max_sl_rupees:
+            logger.debug("%s: VWAP filtered — ATR %.2f exceeds max SL ₹%.0f (high-price stock)",
+                         ticker, atr_val, max_sl_rupees)
+            return None
 
         cross_up   = _crossover(ema_fast_s,  vwap_series, i)
         cross_down = _crossunder(ema_fast_s, vwap_series, i)

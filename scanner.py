@@ -192,22 +192,46 @@ def _reconcile_open_positions() -> None:
     if kite is None:
         return
     try:
-        live = {p["tradingsymbol"] for p in kite.positions().get("net", [])
-                if abs(p["quantity"]) > 0}
+        positions = kite.positions().get("net", [])
+        live = {p["tradingsymbol"] for p in positions if abs(p["quantity"]) > 0}
+        # Build exit-price lookup from closed positions (quantity == 0)
+        closed_pos = {p["tradingsymbol"]: p for p in positions if abs(p["quantity"]) == 0}
     except Exception:
         return
 
-    import trade_log as tl
-    from datetime import datetime
-    for t in tl.load_today():
-        if t.get("status") == "OPEN" and t["ticker"] not in live:
-            tl.record_exit(
-                t["entry_order_id"],
-                "KITE_CLOSED",
-                t["fill_price"],
-                0.0,
-            )
-            logger.info("[reconcile] %s not in Kite positions — marked KITE_CLOSED", t["ticker"])
+    try:
+        today_trades = kite.trades()
+    except Exception:
+        today_trades = []
+
+    for t in trade_log.load_today():
+        if t.get("status") != "OPEN" or t["ticker"] in live:
+            continue
+
+        ticker   = t["ticker"]
+        is_buy   = t["direction"] == "BUY"
+        qty      = t["qty"]
+
+        # Try to get actual exit price: closed position sell/buy price first
+        exit_price = None
+        cp = closed_pos.get(ticker)
+        if cp is not None:
+            if is_buy and float(cp.get("sell_price") or 0) > 0:
+                exit_price = float(cp["sell_price"])
+            elif not is_buy and float(cp.get("buy_price") or 0) > 0:
+                exit_price = float(cp["buy_price"])
+
+        # Fallback: most recent trade fill for this ticker
+        if exit_price is None:
+            fills = [tr["price"] for tr in today_trades if tr["tradingsymbol"] == ticker]
+            if fills:
+                exit_price = float(fills[-1])
+
+        exit_price = exit_price or t["fill_price"]
+        pnl = round((exit_price - t["fill_price"]) * qty * (1 if is_buy else -1), 2)
+
+        trade_log.record_exit(t["entry_order_id"], "KITE_CLOSED", exit_price, pnl)
+        logger.info("[reconcile] %s closed on Kite — exit=%.2f  P&L=%.2f", ticker, exit_price, pnl)
 
 
 def main() -> None:
