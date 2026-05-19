@@ -79,8 +79,12 @@ class VWAPStrategy(BaseStrategy):
         trend_filter = self._p("trend_filter")
         ema_confirm  = self._p("ema_confirm")
         ema_slow_sma = self._p("ema_slow_sma")
-        min_adx       = self._p("min_adx")
-        max_sl_rupees = self._p("max_sl_rupees")
+        min_adx           = self._p("min_adx")
+        max_sl_rupees     = self._p("max_sl_rupees")
+        excluded_tickers  = self._p("excluded_tickers", [])
+
+        if ticker in excluded_tickers:
+            return None
 
         min_candles = trend_ema + atr_len + 5
         if len(df) < min_candles:

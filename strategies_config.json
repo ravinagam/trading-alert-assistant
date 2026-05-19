@@ -46,7 +46,7 @@
         "ema_slow_sma": 20,
         "session_start": "09:30",
         "session_end": "10:00",
-        "excluded_tickers": ["M&M"]
+        "excluded_tickers": ["M&M", "HAL", "TRENT", "TECHM", "DRREDDY", "BAJAJFINSV"]
       }
     },
     "vwap": {
@@ -63,12 +63,13 @@
         "ema_slow_sma": 20,
         "min_adx": 20,
         "max_sl_rupees": 10,
-        "session_start": "11:30",
+        "excluded_tickers": ["HAL", "TRENT", "TECHM", "DRREDDY", "BAJAJFINSV"],
+        "session_start": "14:00",
         "session_end": "14:45"
       }
     },
     "supertrend": {
-      "enabled": true,
+      "enabled": false,
       "description": "Supertrend — ATR(10,3) dynamic trend flip with volume + EMA9>SMA20 confirmation",
       "params": {
         "atr_len": 10,
