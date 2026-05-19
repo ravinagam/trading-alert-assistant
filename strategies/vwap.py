@@ -108,8 +108,8 @@ class VWAPStrategy(BaseStrategy):
                          ticker, atr_val, max_sl_rupees)
             return None
 
-        cross_up   = _crossover(ema_fast_s,  vwap_series, i)
-        cross_down = _crossunder(ema_fast_s, vwap_series, i)
+        cross_up   = _crossover(close,  vwap_series, i)
+        cross_down = _crossunder(close, vwap_series, i)
 
         if not cross_up and not cross_down:
             return None
@@ -177,5 +177,5 @@ class VWAPStrategy(BaseStrategy):
             reward_pct    = reward_pct,
             priority      = ticker in config.HIGH_ATR_STOCKS,
             strategy_name = self.name,
-            footer        = f"EMA{fast_ema} x VWAP crossover · {trend_desc}{confirm_desc}",
+            footer        = f"Close x VWAP crossover · {trend_desc}{confirm_desc}",
         )
