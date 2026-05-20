@@ -101,7 +101,14 @@ def _print_open_positions(open_trades: list[dict], kite) -> float:
         pos    = positions.get(ticker)
 
         if pos is not None:
-            unreal = float(pos.get("pnl", 0))
+            # Use position's last_price so LTP and P&L are from the same snapshot
+            live_price = float(pos.get("last_price") or 0)
+            if live_price:
+                mult   = 1 if t["direction"] == "BUY" else -1
+                unreal = (live_price - t["fill_price"]) * t["qty"] * mult
+                ltp    = live_price
+            else:
+                unreal = float(pos.get("pnl", 0))
         elif ltp is not None:
             mult   = 1 if t["direction"] == "BUY" else -1
             unreal = (ltp - t["fill_price"]) * t["qty"] * mult

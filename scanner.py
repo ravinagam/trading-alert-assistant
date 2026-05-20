@@ -238,6 +238,7 @@ def main() -> None:
     _prevent_sleep()
     _load_event_filter()
     _reconcile_open_positions()
+    kite_broker.restart_monitors()
     active = strategies.get_active_strategies()
     logger.info("Trading Alert Scanner started.")
     logger.info("Stocks    : Nifty 50 (%d tickers)", len(config.NIFTY50_STOCKS))

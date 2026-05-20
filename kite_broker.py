@@ -395,4 +395,53 @@ def place_orders(signal: Signal) -> bool:
             name    = f"monitor-{ticker}",
         ).start()
 
+
+# ── Restart monitors after scanner restart ────────────────────────────────────
+
+def restart_monitors() -> None:
+    """
+    On scanner startup, re-attach monitor threads to any OPEN positions
+    that have SL + target orders still pending. Without this, a restart
+    leaves orphan orders uncancelled when SL/target fires.
+    """
+    if not getattr(config, "KITE_ENABLED", False):
+        return
+
+    kite = _get_kite()
+    if kite is None:
+        return
+
+    open_trades = [t for t in trade_log.load_today()
+                   if t.get("status") == "OPEN"
+                   and t.get("sl_order_id")
+                   and t.get("target_order_id")]
+
+    if not open_trades:
+        return
+
+    # Only watch positions that are still live on Kite
+    try:
+        live = {p["tradingsymbol"] for p in kite.positions().get("net", [])
+                if abs(p["quantity"]) > 0}
+    except Exception as exc:
+        logger.warning("[restart_monitors] Could not fetch positions: %s", exc)
+        return
+
+    for t in open_trades:
+        ticker = t["ticker"]
+        if ticker not in live:
+            continue
+        thread_name = f"monitor-{ticker}"
+        if any(th.name == thread_name for th in threading.enumerate()):
+            continue  # monitor already running
+
+        logger.info("[restart_monitors] Restarting monitor for %s", ticker)
+        threading.Thread(
+            target  = _monitor_position,
+            args    = (kite, ticker, t["direction"], t["fill_price"], t["qty"],
+                       t["entry_order_id"], t["sl_order_id"], t["target_order_id"]),
+            daemon  = True,
+            name    = thread_name,
+        ).start()
+
     return True
