@@ -107,9 +107,10 @@ class VWAPStrategy(BaseStrategy):
         vwap_val = float(vwap_series.iloc[i])
         candle_t = df.index[i]
 
-        if max_sl_rupees and atr_val > max_sl_rupees:
-            logger.debug("%s: VWAP filtered — ATR %.2f exceeds max SL ₹%.0f (high-price stock)",
-                         ticker, atr_val, max_sl_rupees)
+        sl_rupees = atr_val * sl_mult
+        if max_sl_rupees and sl_rupees > max_sl_rupees:
+            logger.debug("%s: VWAP filtered — SL ₹%.2f (ATR %.2f × %.1f) exceeds max ₹%.0f",
+                         ticker, sl_rupees, atr_val, sl_mult, max_sl_rupees)
             return None
 
         cross_up   = _crossover(close,  vwap_series, i)
